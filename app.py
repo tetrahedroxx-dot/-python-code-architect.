@@ -72,7 +72,7 @@ if st.button("🔧 Analyze & Repair Code", type="primary", use_container_width=T
         with st.spinner("Analyzing static syntax, evaluating control flows, and applying security patches..."):
             try:
                 # Direct REST API Call (Bypasses SDK bugs)
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key.strip()}"
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key.strip()}"
                 
                 full_prompt = f"{SYSTEM_PROMPT}\n\nHere is the broken Python script to analyze and repair:\n\n{input_code}"
                 
