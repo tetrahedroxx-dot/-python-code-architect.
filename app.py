@@ -40,24 +40,31 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Sidebar
+# Sidebar Configuration
 with st.sidebar:
     st.header("⚙️ Configuration")
-    provider = st.radio("Select AI Provider:", ["Google Gemini API (Stable v1)", "Groq API (Free & Fast)"])
+    provider = st.radio("Select AI Provider:", ["Groq API (Free & Fast)", "Google Gemini API (Stable v1)"])
     
     st.markdown("---")
-    if provider == "Google Gemini API (Stable v1)":
-        api_key = st.text_input("Enter Gemini API Key:", type="password")
-        st.markdown("[Get free Gemini Key](https://aistudio.google.com/app/apikey)")
+    
+    # Auto-load key from Streamlit secrets if available
+    saved_groq_key = st.secrets.get("GROQ_API_KEY", "")
+    saved_gemini_key = st.secrets.get("GEMINI_API_KEY", "")
+    
+    if provider == "Groq API (Free & Fast)":
+        if saved_groq_key:
+            api_key = saved_groq_key
+            st.success("✅ Saved Groq API Key Loaded Automatically!")
+        else:
+            api_key = st.text_input("Enter Groq API Key:", type="password")
+            st.markdown("[Get free Groq Key](https://console.groq.com/keys)")
     else:
-        api_key = st.text_input("Enter Groq API Key:", type="password")
-        st.markdown("[Get free Groq Key](https://console.groq.com/keys)")
-
-    st.markdown("---")
-    st.markdown("### How to use:")
-    st.markdown("1. Select provider & paste API key.")
-    st.markdown("2. Input your broken Python code.")
-    st.markdown("3. Click **Analyze & Repair Code**.")
+        if saved_gemini_key:
+            api_key = saved_gemini_key
+            st.success("✅ Saved Gemini API Key Loaded Automatically!")
+        else:
+            api_key = st.text_input("Enter Gemini API Key:", type="password")
+            st.markdown("[Get free Gemini Key](https://aistudio.google.com/app/apikey)")
 
 # Main Interface
 st.markdown('<div class="main-header">⚡ Python Code Architect</div>', unsafe_allow_html=True)
@@ -71,7 +78,6 @@ input_code = st.text_area(
 )
 
 def call_gemini_v1(key, prompt):
-    # Calls STABLE /v1/ REST endpoint (fixes 404 v1beta error)
     url = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={key.strip()}"
     payload = {"contents": [{"parts": [{"text": prompt}]}]}
     headers = {'Content-Type': 'application/json'}
@@ -95,12 +101,31 @@ def call_groq(key, prompt):
 # Process Button
 if st.button("🔧 Analyze & Repair Code", type="primary", use_container_width=True):
     if not api_key:
-        st.error("Please enter your API Key in the sidebar.")
+        st.error("Please enter or save your API Key in Streamlit Secrets.")
     elif not input_code.strip():
         st.warning("Please paste some Python code to analyze.")
     else:
         with st.spinner("AI Agent analyzing syntax, control flows, and security..."):
-            if provider == "Google Gemini API (Stable v1)":
+            if provider == "Groq API (Free & Fast)":
+                res = call_groq(api_key, input_code)
+                data = res.json()
+                
+                if res.status_code == 200:
+                    output_text = data['choices'][0]['message']['content']
+                    st.success("Analysis Complete! (Powered by Groq Llama-3.3)")
+                    st.markdown("### 📋 Repair Results & Output")
+                    st.markdown(output_text)
+                    
+                    st.download_button(
+                        label="📥 Download Debugged Code Summary",
+                        data=output_text,
+                        file_name="repaired_script.md",
+                        mime="text/markdown"
+                    )
+                else:
+                    err = data.get('error', {}).get('message', 'API Error')
+                    st.error(f"Groq API Error ({res.status_code}): {err}")
+            else:
                 full_prompt = f"{SYSTEM_PROMPT}\n\nHere is the broken Python script to analyze and repair:\n\n{input_code}"
                 res = call_gemini_v1(api_key, full_prompt)
                 data = res.json()
@@ -120,22 +145,3 @@ if st.button("🔧 Analyze & Repair Code", type="primary", use_container_width=T
                 else:
                     err = data.get('error', {}).get('message', 'API Error')
                     st.error(f"Gemini API Error ({res.status_code}): {err}")
-            else:
-                res = call_groq(api_key, input_code)
-                data = res.json()
-                
-                if res.status_code == 200:
-                    output_text = data['choices'][0]['message']['content']
-                    st.success("Analysis Complete! (Powered by Groq Llama-3.3)")
-                    st.markdown("### 📋 Repair Results & Output")
-                    st.markdown(output_text)
-                    
-                    st.download_button(
-                        label="📥 Download Debugged Code Summary",
-                        data=output_text,
-                        file_name="repaired_script.md",
-                        mime="text/markdown"
-                    )
-                else:
-                    err = data.get('error', {}).get('message', 'API Error')
-                    st.error(f"Groq API Error ({res.status_code}): {err}")
