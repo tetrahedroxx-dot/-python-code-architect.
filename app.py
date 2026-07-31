@@ -1,6 +1,5 @@
 import streamlit as st
-import ast
-import re
+import requests
 
 # Page configuration
 st.set_page_config(
@@ -9,7 +8,22 @@ st.set_page_config(
     layout="wide"
 )
 
-# Custom CSS for styling
+# System Prompt Definition
+SYSTEM_PROMPT = """
+You are an elite, autonomous Python Code Architect and automated debugging agent. Your sole purpose is to analyze broken Python scripts, find errors, and return fully functional, corrected code without changing the original logic.
+
+Apply this strict, step-by-step resolution chain to the provided script:
+1. STATIC ANALYSIS: Check for syntax errors, improper indentation, missing imports, typos, or undefined variables.
+2. LOGIC EVALUATION: Analyze control flows, loop conditions, data mutations, and type mismatches.
+3. ERROR HANDLING & SECURITY: Implement missing Try-Except blocks for risky operations (I/O, API calls) and fix any vulnerable patterns (e.g., shell=True in subprocess).
+4. REFACTOR & OPTIMIZE: Apply PEP 8 styling guidelines and optimize slow or redundant operations while keeping the original architecture intact.
+
+OUTPUT FORMAT REQUIREMENTS:
+- Provide a brief 3-sentence summary of what broke and why.
+- Provide the FULL corrected script inside a single Markdown python code block. Do not use placeholders or comments like "# insert original code here".
+"""
+
+# Custom CSS
 st.markdown("""
     <style>
     .main-header {
@@ -23,20 +37,30 @@ st.markdown("""
         color: #6B7280;
         margin-bottom: 2rem;
     }
-    .status-badge {
-        background-color: #10B981;
-        color: white;
-        padding: 4px 12px;
-        border-radius: 12px;
-        font-size: 0.85rem;
-        font-weight: bold;
-    }
     </style>
 """, unsafe_allow_html=True)
 
+# Sidebar
+with st.sidebar:
+    st.header("⚙️ Configuration")
+    api_key = st.text_input("Enter your Gemini API Key:", type="password")
+    st.markdown("[Get a free Gemini API Key here](https://aistudio.google.com/app/apikey)")
+    
+    st.markdown("---")
+    selected_model = st.selectbox(
+        "Select AI Model:",
+        ["Auto-Fallback (Recommended)", "gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash-exp"]
+    )
+    
+    st.markdown("---")
+    st.markdown("### How to use:")
+    st.markdown("1. Paste your Gemini API key above.")
+    st.markdown("2. Input your broken Python code.")
+    st.markdown("3. Click **Analyze & Repair Code**.")
+
 # Main Interface
-st.markdown('<div class="main-header">⚡ Python Code Architect <span class="status-badge">Offline Mode</span></div>', unsafe_allow_html=True)
-st.markdown('<div class="sub-header">Automated static analysis, syntax repair, security patcher, and code refactor engine.</div>', unsafe_allow_html=True)
+st.markdown('<div class="main-header">⚡ Python Code Architect</div>', unsafe_allow_html=True)
+st.markdown('<div class="sub-header">AI-Powered static analysis, logic evaluation, security patcher, and code optimizer.</div>', unsafe_allow_html=True)
 
 # Code Input Area
 input_code = st.text_area(
@@ -45,68 +69,57 @@ input_code = st.text_area(
     placeholder="# Paste broken Python code here...\ndef calculate(x, y):\n    return x + y"
 )
 
-def analyze_and_repair(code):
-    issues = []
-    repaired_code = code
-
-    # 1. Fix Common Syntax Errors (e.g., assignment '=' in 'if' condition)
-    fixed_syntax = re.sub(r'if\s+([a-zA-Z0-9_]+)\s*=\s*([^\n:]+):', r'if \1 == \2:', repaired_code)
-    if fixed_syntax != repaired_code:
-        issues.append("• **Syntax Error Repaired:** Fixed assignment `=` inside `if` statement to comparison `==`.")
-        repaired_code = fixed_syntax
-
-    # 2. Static Analysis AST Check
-    try:
-        ast.parse(repaired_code)
-        issues.append("• **Static Analysis:** Syntax parsing passed successfully.")
-    except SyntaxError as e:
-        issues.append(f"• **Syntax Error Detected:** Line {e.lineno}: {e.msg}")
-
-    # 3. Security Vulnerability Patching (eval & shell=True)
-    if "eval(" in repaired_code:
-        issues.append("• **Security Vulnerability Patched:** Replaced unsafe `eval()` with `ast.literal_eval()` to prevent Code Injection.")
-        repaired_code = re.sub(r'\beval\(', 'ast.literal_eval(', repaired_code)
-        if "import ast" not in repaired_code:
-            repaired_code = "import ast\n" + repaired_code
-
-    if "shell=True" in repaired_code:
-        issues.append("• **Security Vulnerability Patched:** Removed `shell=True` from subprocess execution to prevent Shell Injection.")
-        repaired_code = repaired_code.replace(", shell=True", "").replace("shell=True,", "").replace("shell=True", "")
-
-    # 4. Missing Imports Detection
-    if "subprocess." in repaired_code and "import subprocess" not in repaired_code:
-        issues.append("• **Missing Import Added:** Automatically appended `import subprocess`.")
-        repaired_code = "import subprocess\n" + repaired_code
-
-    # 5. Logic Error & Division Guard
-    if "/" in repaired_code and "ZeroDivisionError" not in repaired_code:
-        issues.append("• **Logic Protection:** Wrapped division operations in ZeroDivisionError exception guards.")
-        repaired_code = re.sub(
-            r'([a-zA-Z0-9_]+)\s*=\s*([a-zA-Z0-9_]+)\s*/\s*([a-zA-Z0-9_]+)',
-            r'try:\n    \1 = \2 / \3\nexcept ZeroDivisionError:\n    \1 = 0',
-            repaired_code
-        )
-
-    summary_text = "### 📋 Repair Summary\n" + "\n".join(issues) if issues else "No issues found!"
-    return summary_text, repaired_code
+def call_gemini_api(model_name, key, prompt):
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={key.strip()}"
+    payload = {
+        "contents": [{"parts": [{"text": prompt}]}]
+    }
+    headers = {'Content-Type': 'application/json'}
+    return requests.post(url, headers=headers, json=payload)
 
 # Process Button
-if st.button("🔧 Analyze & Repair Code Instantly", type="primary", use_container_width=True):
-    if not input_code.strip():
+if st.button("🔧 Analyze & Repair Code", type="primary", use_container_width=True):
+    if not api_key:
+        st.error("Please enter your Gemini API Key in the sidebar to proceed.")
+    elif not input_code.strip():
         st.warning("Please paste some Python code to analyze.")
     else:
-        with st.spinner("Executing AST static analysis and security engine..."):
-            summary, fixed_code = analyze_and_repair(input_code)
+        with st.spinner("AI Agent analyzing syntax, control flows, and security..."):
+            full_prompt = f"{SYSTEM_PROMPT}\n\nHere is the broken Python script to analyze and repair:\n\n{input_code}"
             
-            st.success("Analysis & Repair Complete!")
-            st.markdown(summary)
+            # Determine candidate models to attempt
+            if selected_model == "Auto-Fallback (Recommended)":
+                candidate_models = ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash-exp"]
+            else:
+                candidate_models = [selected_model]
             
-            st.markdown("### 🛠️ Corrected Script")
-            st.code(fixed_code, language="python")
+            success = False
+            last_error = ""
 
-            st.download_button(
-                label="📥 Download Repaired Script",
-                data=fixed_code,
-                file_name="repaired_script.py",
-                mime="text/plain"
-            )
+            for model_name in candidate_models:
+                try:
+                    res = call_gemini_api(model_name, api_key, full_prompt)
+                    data = res.json()
+                    
+                    if res.status_code == 200:
+                        output_text = data['candidates'][0]['content']['parts'][0]['text']
+                        st.success(f"Analysis Complete! (Powered by {model_name})")
+                        st.markdown("### 📋 Repair Results & Output")
+                        st.markdown(output_text)
+
+                        st.download_button(
+                            label="📥 Download Debugged Code Summary",
+                            data=output_text,
+                            file_name="repaired_script.md",
+                            mime="text/markdown"
+                        )
+                        success = True
+                        break
+                    else:
+                        last_error = data.get('error', {}).get('message', 'Unknown Error')
+                except Exception as e:
+                    last_error = str(e)
+                    continue
+            
+            if not success:
+                st.error(f"API Attempt Failed: {last_error}\n\nTip: Please wait 30 seconds for the free tier quota to reset, or click the link in the sidebar to create a fresh API key.")
