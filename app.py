@@ -74,7 +74,7 @@ if st.button("🔧 Analyze & Repair Code", type="primary", use_container_width=T
                 # Configure API
                 genai.configure(api_key=api_key)
                 model = genai.GenerativeModel(
-                    model_name="gemini-1.5-flash",
+                    model_name="gemini-pro",
                     system_instruction=SYSTEM_PROMPT
                 )
                 
