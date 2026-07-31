@@ -73,13 +73,13 @@ if st.button("🔧 Analyze & Repair Code", type="primary", use_container_width=T
             try:
                 # Configure API
                 genai.configure(api_key=api_key)
-                model = genai.GenerativeModel(
-                    model_name="gemini-1.5-flash-latest",
-                    system_instruction=SYSTEM_PROMPT
-                )
+                model = genai.GenerativeModel("gemini-1.5-flash")
+                
+                # Combine System Prompt + User Code (Uses stable v1 API endpoint)
+                full_prompt = f"{SYSTEM_PROMPT}\n\nHere is the broken Python script to analyze and repair:\n\n{input_code}"
                 
                 # Generate Repair
-                response = model.generate_content(input_code)
+                response = model.generate_content(full_prompt)
                 
                 st.success("Analysis Complete!")
                 st.markdown("### 📋 Repair Results & Output")
