@@ -1,5 +1,5 @@
 import streamlit as st
-import google.generativeai as genai
+import requests
 
 # Page configuration
 st.set_page_config(
@@ -71,27 +71,36 @@ if st.button("🔧 Analyze & Repair Code", type="primary", use_container_width=T
     else:
         with st.spinner("Analyzing static syntax, evaluating control flows, and applying security patches..."):
             try:
-                # Configure API
-                genai.configure(api_key=api_key)
-                model = genai.GenerativeModel("gemini-1.5-flash")
+                # Direct REST API Call (Bypasses SDK bugs)
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key.strip()}"
                 
-                # Combine System Prompt + User Code (Uses stable v1 API endpoint)
                 full_prompt = f"{SYSTEM_PROMPT}\n\nHere is the broken Python script to analyze and repair:\n\n{input_code}"
                 
-                # Generate Repair
-                response = model.generate_content(full_prompt)
+                payload = {
+                    "contents": [{
+                        "parts": [{"text": full_prompt}]
+                    }]
+                }
                 
-                st.success("Analysis Complete!")
-                st.markdown("### 📋 Repair Results & Output")
-                st.markdown(response.text)
+                headers = {'Content-Type': 'application/json'}
+                response = requests.post(url, headers=headers, json=payload)
+                data = response.json()
+                
+                if response.status_code == 200:
+                    output_text = data['candidates'][0]['content']['parts'][0]['text']
+                    st.success("Analysis Complete!")
+                    st.markdown("### 📋 Repair Results & Output")
+                    st.markdown(output_text)
 
-                # Download Option
-                st.download_button(
-                    label="📥 Download Debugged Code Summary",
-                    data=response.text,
-                    file_name="repaired_script.md",
-                    mime="text/markdown"
-                )
+                    st.download_button(
+                        label="📥 Download Debugged Code Summary",
+                        data=output_text,
+                        file_name="repaired_script.md",
+                        mime="text/markdown"
+                    )
+                else:
+                    error_msg = data.get('error', {}).get('message', 'Unknown API Error')
+                    st.error(f"Gemini API Error ({response.status_code}): {error_msg}")
                 
             except Exception as e:
                 st.error(f"An error occurred during analysis: {str(e)}")
